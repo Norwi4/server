@@ -3,6 +3,8 @@ package ru.sklon;
 import javax.sound.sampled.*;
 import java.io.*;
 import java.net.*;
+import java.util.ArrayList;
+
 /**
  * @author Abaev Evgeniy
  */
@@ -10,15 +12,19 @@ public class VoiceChatServerTest {
     private ServerSocket nicknameServerSocket;
     private ServerSocket audioServerSocket;
 
+    private ArrayList<ClientHandler> connectedClients; // Список подключенных клиентов
+
     public VoiceChatServerTest(int nicknamePort, int audioPort) throws IOException {
         nicknameServerSocket = new ServerSocket(nicknamePort);
         audioServerSocket = new ServerSocket(audioPort);
+
+        connectedClients = new ArrayList<>(); // Инициализация списка подключенных клиентов
 
         System.out.println("Сервер запущен на портах " + nicknamePort + " (ник) и " + audioPort + " (аудио)");
 
         while (true) {
             Socket clientNicknameSocket = nicknameServerSocket.accept();
-            new Thread(new ClientHandler(clientNicknameSocket)).start(); // Создание нового потока для каждого клиента
+            new Thread(new ClientHandler(clientNicknameSocket)).start();
         }
     }
 
@@ -29,20 +35,22 @@ public class VoiceChatServerTest {
         public ClientHandler(Socket socket) {
             this.clientNicknameSocket = socket;
 
-            // Получение ника от клиента
             try (InputStream input = clientNicknameSocket.getInputStream()) {
                 byte[] nicknameBuffer = new byte[32];
                 input.read(nicknameBuffer);
                 this.nickname = new String(nicknameBuffer).trim();
                 System.out.println("Клиент с ником \"" + nickname + "\" подключен.");
 
-                // Ожидание подключения для аудио
+                synchronized (connectedClients) { // Синхронизация доступа к списку клиентов
+                    connectedClients.add(this);
+                    sendUserList(); // Отправка обновленного списка пользователям
+                }
+
                 Socket clientAudioSocket = audioServerSocket.accept();
                 new Thread(() -> receiveAudio(clientAudioSocket)).start();
 
             } catch (IOException e) {
                 System.err.println("Ошибка при получении ника от клиента: " + e.getMessage());
-                return;
             }
         }
 
@@ -65,14 +73,39 @@ public class VoiceChatServerTest {
 
             } catch (IOException | LineUnavailableException e) {
                 System.err.println("Ошибка при получении аудио от клиента \"" + nickname + "\": " + e.getMessage());
-
             } finally {
                 try {
-                    clientAudioSocket.close();
                     clientNicknameSocket.close();
                     System.out.println("Клиент \"" + nickname + "\" отключен.");
+
+                    synchronized (connectedClients) {
+                        //connectedClients.remove(this); // Удаляем клиента из списка
+                        sendUserList(); // Отправляем обновленный список пользователям
+                    }
+
                 } catch (IOException e) {
                     System.err.println("Ошибка при закрытии соединения с клиентом \"" + nickname + "\": " + e.getMessage());
+                }
+            }
+        }
+
+        private void sendUserList() throws IOException {
+            StringBuilder userList = new StringBuilder();
+
+            synchronized (connectedClients) {
+                for (ClientHandler client : connectedClients) {
+                    userList.append(client.nickname).append("\n"); // Добавляем никнейм клиента в список
+                }
+            }
+
+            // Отправляем список всем клиентам
+            for (ClientHandler client : connectedClients) {
+                try {
+                    OutputStream outputStream = client.clientNicknameSocket.getOutputStream();
+                    outputStream.write(userList.toString().getBytes());
+                    outputStream.flush();
+                } catch (IOException e) {
+                    System.err.println("Ошибка при отправке списка пользователям: " + e.getMessage());
                 }
             }
         }
