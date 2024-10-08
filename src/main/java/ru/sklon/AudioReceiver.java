@@ -17,7 +17,7 @@ public class AudioReceiver implements Runnable {
     @Override
     public void run() {
         try {
-            byte[] buffer = new byte[1024];
+            byte[] buffer = new byte[8192];
             InputStream in = socket.getInputStream();
 
             while (true) {
