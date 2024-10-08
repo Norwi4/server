@@ -9,7 +9,7 @@ import java.util.*;
  * @author Abaev Evgeniy
  */
 public class VoiceChatServer {
-    private static final int PORT = 50005;
+    private static final int PORT = 50006;
     private static Set<Socket> clientSockets = new HashSet<>();
 
     public static void main(String[] args) {
